@@ -1,0 +1,95 @@
+---
+- hosts: 127.0.0.1
+  connection: local
+  sudo: yes
+
+  tasks:
+  - name: update yum
+    yum: name=* state=latest
+
+  - name: install required packages
+    yum: pkg={{ item }} state=installed
+    with_items:
+        - ntp
+        - vim
+        - nano
+        - emacs
+        - unzip
+        - tar
+        - wget
+        - curl
+        - lsb # for hamachi
+        - openssh-server # should create handler for this
+        - openssh-clients
+
+  - name: install hamachi
+    yum: name="https://secure.logmein.com/labs/logmein-hamachi-2.1.0.139-1.x86_64.rpm" state=present
+
+  - name: Start Hamachi
+    service: name=logmein-hamachi state=started
+
+ # tasks: (can't figure out way user can press enter and input yes)
+ # - name: download crashplan
+ #   get_url: url=http://download.crashplan.com/installs/linux/install/CrashPlanPRO/CrashPlanPRO_4.5.2_Linux.tgz dest=/tmp
+
+#  - name: Extract crash plan
+#    unarchive:  src=/tmp/CrashPlanPRO_4.5.2_Linux.tgz dest=/tmp
+
+#  - name: Run the installation script
+#    script: "/tmp/crashplan-install/install.sh < yes"
+
+  - name: Run Bahmni Installer script, download the latest bahmni installer and install it
+    script: /tmp/ansible_endTB/version_control.sh
+
+  - name: copy mysql dump to /etc/bahmni-installer/deployment-artifacts
+    #get_url: url="https://bahmni-repo.twhosted.com/endtb/dubai/mysql_dump.sql" dest=/etc/bahmni-installer/deployment-artifacts
+    get_url: url="https://bahmni-repo.twhosted.com/endtb/mysql_dump.sql" dest=/etc/bahmni-installer/deployment-artifacts
+  - name: copy endTB config
+    #get_url: url="https://bahmni-repo.twhosted.com/endtb/dubai/endtb-config.zip" dest=/etc/bahmni-installer/deployment-artifacts
+    get_url: url="https://bahmni-repo.twhosted.com/endtb/endtb_config.zip" dest=/etc/bahmni-installer/deployment-artifacts
+
+  - name: Extract endtb_config
+    # unarchive: src=/etc/bahmni-installer/deployment-artifacts/endtb-config.zip dest=/etc/bahmni-installer/deployment-artifacts (This works if you use the dubai url)
+    unarchive: src=/etc/bahmni-installer/deployment-artifacts/endtb_config.zip dest=/etc/bahmni-installer/deployment-artifacts
+
+  - name: Create endTB directory
+    file: path=/etc/bahmni-installer/deployment-artifacts/endtb_config state=directory
+
+  - name: Copy openmrs folder from endtb-config-master to endtb_config
+    # copy: src=/etc/bahmni-installer/deployment-artifacts/endtb-config-master/openmrs dest=/etc/bahmni-installer/deployment-artifacts/endtb_config (This is for Dubai)
+    command: mv /etc/bahmni-installer/deployment-artifacts/openmrs /etc/bahmni-installer/deployment-artifacts/endtb_config
+
+
+  - name: copy the inventory file
+    get_url: url="https://bahmni.atlassian.net/wiki/download/attachments/35291242/prod_sample_inventory?version=1&modificationDate=1449843726269&api=v2" dest=/etc/bahmni-installer/
+
+  - name: rename the above file to prod
+    command: mv /etc/bahmni-installer/prod_sample_inventory /etc/bahmni-installer/prod
+
+  - name: create setup.yml file
+    file: path=/etc/bahmni-installer/setup.yml state=touch owner=root group=root mode=0644
+
+  - name: add the below lines in setup.yml
+    lineinfile:
+              dest=/etc/bahmni-installer/setup.yml
+              line="{{ item.line }}"
+    with_items:
+      - { line: "implementation_name: endtb"  }
+      - { line: "omods: ['bacteriology-1.0-SNAPSHOT.omod']" }
+      - { line: "bahmni_ntp_timezone: America/New_York" }
+
+  - name: create bahmniInstaller.sh
+    file: path=/etc/bahmni-installer/bahmniInstaller.sh state=touch owner=root group=root mode=0755
+
+  - name: add the below lines in the above file
+    lineinfile:
+              dest=/etc/bahmni-installer/bahmniInstaller.sh
+              line="{{ item.line }}"
+    with_items:
+      - { line: "!#/bin/bash" }
+      - { line: "bahmni install prod" }
+
+  - name: run the bahmni installer script
+    script: /etc/bahmni-installer/bahmniInstaller.sh
+
+
